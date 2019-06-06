@@ -6,11 +6,11 @@ To clone this repository, use the following command.
 
 `$ git clone https://github.com/Alwaysenchanted/camouflaged_logc_single_fault.git`
 
-# Run
-First, make sure that you have already download the "host15-logic-encryption" repository from https://bitbucket.org/spramod/host15-logic-encryption/src/default/. Then, use the three python3 scripts in the src directory to run the test and get the result.
-
 # Enviroment
 These codes should be run on Ubuntu 64-bit Linux. Python3 is also needed.
+
+# Run
+First, make sure that you have already download the "host15-logic-encryption" repository from https://bitbucket.org/spramod/host15-logic-encryption/src/default/. Then, use the three python3 scripts in the src directory to run the test and get the result.
 
 ### makeFault.py
 This script will automatically create a folder in your directory of the "host15-logic-encryption" repository which includes four folders for four degrees of c880_enc encryption, namely 5%, 15%, 20% and 50%. Each of these folders contains four sub-folders corresponding to the four types of single-fault models. Benchmarks with single fault will be generated and placed in these sub-folders. 
