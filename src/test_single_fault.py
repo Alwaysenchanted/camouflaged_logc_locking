@@ -2,28 +2,28 @@ import os
 
 #All the types of faults to be tested
 faults = ['nortoxnor']#['nandtonor','nortonand','xortoxnor','xnortoxor','xortonor', 'xortonand', 'xnortonor', 'xnortonand', 'nortoxor', 'nandtoxor', 'nortoxnor', 'nandtoxnor']
+bench = 'c880'
+dirs = [bench+'_enc05']#[bench+'_enc25', bench+'_enc50']  All the benches to be tested
+encrypt_type = 'rnd'
 
 base_dir ='path to /host15-logic-encryption' #The directory of the HOST-15 code
 
-bench = 'c880'
-dirs = [bench+'_enc05']#[bench+'_enc25', bench+'_enc50']  All the benches to be tested
-
 sld = base_dir + '/bin/sld '
 lcmp = base_dir + '/bin/lcmp'
-os.popen('mkdir -p '+base_dir+'/benchmarks/rnd_camouflaged_singefault')
+os.popen('mkdir -p '+base_dir+'/benchmarks/'+encrypt_type+'_camouflaged_singefault')
 
 lcmp_result = []  #The result of lcmp
 
 for dir in dirs:
-    real_dir = base_dir + '/benchmarks/rnd_camouflaged_singefault/' + dir
+    real_dir = base_dir + '/benchmarks/'+encrypt_type+'_camouflaged_singefault'+'/' + dir
     os.popen('mkdir -p ' + real_dir)
     for fault in faults:
         os.popen('mkdir -p ' + real_dir + '/' + fault)
-    file = open(base_dir + '/benchmarks/rnd/' + dir +'.bench')
+    file = open(base_dir + '/benchmarks/'+ encrypt_type +'/' + dir +'.bench')
     content = file.readlines()
     file.close()
     for fault in faults:
-        real_dir = base_dir + '/benchmarks/rnd_camouflaged_singefault/' + dir + '/' + fault
+        real_dir = base_dir + '/benchmarks/'+encrypt_type+'_camouflaged_singefault'+'/' + dir + '/' + fault
         origin = fault[:fault.find('to')]
         target = fault[fault.find('to') + 2:]
         count = 1
@@ -57,6 +57,6 @@ for dir in dirs:
         file.write('\n'.join(result))
         file.close()
         lcmp_result.append(dir+'_'+fault+': ' + str(sum([1 for line in tmp_lcmp_result if line.find('different') >= 0]))+'/'+str(len(tmp_lcmp_result)))
-        file = open(base_dir + '/benchmarks/rnd_camouflaged_singefault/lcmp_result_'+bench+'_'+fault'.txt', 'w')
+        file = open(base_dir + '/benchmarks/'+encrypt_type+'_camouflaged_singefault/lcmp_result_'+bench+'_'+fault'.txt', 'w')
         file.write('\n'.join(lcmp_result))
         file.close()
