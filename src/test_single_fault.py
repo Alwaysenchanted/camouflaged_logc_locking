@@ -57,6 +57,6 @@ for dir in dirs:
         file.write('\n'.join(result))
         file.close()
         lcmp_result.append(dir+'_'+fault+': ' + str(sum([1 for line in tmp_lcmp_result if line.find('different') >= 0]))+'/'+str(len(tmp_lcmp_result)))
-        file = open(base_dir + '/benchmarks/'+encrypt_type+'_camouflaged_singefault/lcmp_result_'+bench+'_'+fault'.txt', 'w')
+        file = open(base_dir + '/benchmarks/'+encrypt_type+'_camouflaged_singefault/lcmp_result_'+bench+'_'+fault.txt', 'w')
         file.write('\n'.join(lcmp_result))
         file.close()
