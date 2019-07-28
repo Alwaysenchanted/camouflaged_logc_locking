@@ -10,16 +10,8 @@ To clone this repository, use the following command.
 These codes should be run on Ubuntu 64-bit Linux. Python3 is also needed.
 
 # Run
-First, make sure that you have already download the "host15-logic-encryption" repository from https://bitbucket.org/spramod/host15-logic-encryption/src/default/. Then, use the three python3 scripts in the src directory to run the test and get the result.
+First, make sure that you have already download the "host15-logic-encryption" repository from https://bitbucket.org/spramod/host15-logic-encryption/src/default/. Then, use the python3 script in the src directory to run the test and get the result.
 
-### makeFault.py
-This script will automatically create a folder in your directory of the "host15-logic-encryption" repository which includes four folders for four degrees of c880_enc encryption, namely 5%, 15%, 20% and 50%. Each of these folders contains four sub-folders corresponding to the four types of single-fault models. Benchmarks with single fault will be generated and placed in these sub-folders. 
-
-### runSld.py
-This script runs the "sld" binary in the "host15-logic-encryption" repository for each of the single-fault benchmarks generated in the last step. If the result is not UNSAT, the key information will be written to "result.txt" located in the same directory of the benchmarks.
-
-### runLcmp.py
-This script runs the "lcmp" binary in the "host15-logic-encryption" repository for the single-fault benchmarks and keys generated in the last two steps. The output of the script would be in the form of: name: different/total, where "name" refers to the fault type, "different" refers to the number of benchmarks which return "different", "total" refers to the total number of benchmarks of this fault type.
-
+### test_single_fault.py
 
 
