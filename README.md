@@ -12,6 +12,9 @@ These codes should be run on Ubuntu 64-bit Linux. Python3 is also needed.
 # Run
 First, make sure that you have already download the "host15-logic-encryption" repository from https://bitbucket.org/spramod/host15-logic-encryption/src/default/. Then, use the python3 script in the src directory to run the test and get the result.
 
-### test_single_fault.py
+### test_single_fault
+Before running the script, the fault types and benchmarks should be defined in the script. For example:
+
+`
 
 
