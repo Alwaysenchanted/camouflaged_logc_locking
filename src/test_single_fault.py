@@ -3,7 +3,7 @@ import os
 #All the types of faults to be tested
 faults = ['nortoxnor']#['nandtonor','nortonand','xortoxnor','xnortoxor','xortonor', 'xortonand', 'xnortonor', 'xnortonand', 'nortoxor', 'nandtoxor', 'nortoxnor', 'nandtoxnor']
 
-base_dir ='/home/tanqinhan/Desktop/CamouflagedLogic/host15-logic-encryption' #The directory of the HOST-15 code
+base_dir ='path to /host15-logic-encryption' #The directory of the HOST-15 code
 
 bench = 'c880'
 dirs = [bench+'_enc05']#[bench+'_enc25', bench+'_enc50']  All the benches to be tested
