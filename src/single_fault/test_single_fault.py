@@ -1,12 +1,18 @@
 import os
+import sys
+
+args = sys.argv
 
 #All the types of faults to be tested
-faults = ['nortoxnor']#['nandtonor','nortonand','xortoxnor','xnortoxor','xortonor', 'xortonand', 'xnortonor', 'xnortonand', 'nortoxor', 'nandtoxor', 'nortoxnor', 'nandtoxnor']
-bench = 'c880'
-dirs = [bench+'_enc05']#[bench+'_enc25', bench+'_enc50']  All the benches to be tested
-encrypt_type = 'rnd'
+faults = args[4].split(',')#['nandtonor','nortonand','xortoxnor','xnortoxor','xortonor', 'xortonand', 'xnortonor', 'xnortonand', 'nortoxor', 'nandtoxor', 'nortoxnor', 'nandtoxnor']
+bench = args[2]
+encs = args[3].split(',')
+dirs = [bench+'_enc'+enc for enc in encs] # All the benches to be tested
+encrypt_type = args[1]
+#print(faults, bench, encs, dirs, encrypt_type)
 
-base_dir ='path to /host15-logic-encryption' #The directory of the HOST-15 code
+
+base_dir ='/home/tanqinhan/Desktop/CamouflagedLogic/host15-logic-encryption'#'path to /host15-logic-encryption' #The directory of the HOST-15 code
 
 sld = base_dir + '/bin/sld '
 lcmp = base_dir + '/bin/lcmp'
