@@ -1,4 +1,4 @@
-This script is to used to transform verilog file into bench format. The verilog code is in whole.v. However, currently the script can only handle the 16 submodules and cannot handle the top module 'vscale_core' because the top module has submodule instantiation statements. 
+This script is used to transform verilog file into bench format. The verilog code is in whole.v. However, currently the script can only handle the 16 submodules and cannot handle the top module 'vscale_core' because the top module has submodule instantiation statements. 
 
 ### Usage
 `python3 verilog2bench.py bench_file`
