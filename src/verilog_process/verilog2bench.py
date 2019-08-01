@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 
 # This script cannot handle sub-module instantiation statements at present. It can only transform the gates in one-level modules into benches
 class Gate:
@@ -14,15 +15,16 @@ class Gate:
         self.output = output
         self.type = type
 
-#Enter the path of verilog files here
-file = open('whole.v', 'r')
+
+verilog_file = sys.argv[1]
+file = open(verilog_file, 'r')
 verilog_text = file.read()
 file.close()
 
 pattern = re.compile('module.*?endmodule', re.S)  #Recognize the module definition
 modules = pattern.findall(verilog_text)
 module_names = [e[e.find('module ') + 7: e.find(' (')] for e in modules]
-gate_names = ['AND2','AND3','AND4','BUF','CLKBUF','AOI211','AOI21','AOI221','AOI222','AOI22','DFF','FA','HA','INV','MUX2','NAND2','NAND3','NAND4','NOR2','NOR3','NOR4','OAI211','OAI21','OAI221','OAI222','OAI22','OAI33','OR2','OR3','OR4','XNOR2']
+gate_names = ['and','or','nand','nor','xor','xnor','buf','not','AND2','AND3','AND4','BUF','CLKBUF','AOI211','AOI21','AOI221','AOI222','AOI22','DFF','FA','HA','INV','MUX2','NAND2','NAND3','NAND4','NOR2','NOR3','NOR4','OAI211','OAI21','OAI221','OAI222','OAI22','OAI33','OR2','OR3','OR4','XNOR2']
 all_inputs = dict()    #Some global data structures
 all_outputs = dict()
 all_gates = dict()
@@ -31,9 +33,11 @@ all_outtags = dict()
 all_pending = dict()
 all_status = dict()
 all_wires = dict()
+all_appearing_inputs = dict()
 
 for i in range(0, len(module_names)):
     all_inputs[module_names[i]] = []
+    all_appearing_inputs[module_names[i]] = []
     all_outputs[module_names[i]] = []
     all_gates[module_names[i]] = dict()
     all_tags[module_names[i]] = []
@@ -52,6 +56,8 @@ while True:
     if sum([1 for i in range(0, len(module_names)) if all_status[module_names[i]] == False]) == 1:
         flag0 = False
     for i in range(0, len(module_names)):
+        # if len(all_pending[module_names[i]]) > 0:
+        #     print(module_names[i], all_pending[module_names[i]])
         if flag0 and module_names[i] == 'vscale_core':  #First handle other modules, leave the top module to the last
             continue
         if all_status[module_names[i]] == True:
@@ -75,11 +81,12 @@ while True:
                             all_inputs[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
                     else:
                         all_inputs[module_names[i]].append(module_names[i] + '#' + item)
-            if module_names[i]+'#vcc' not in all_inputs[module_names[i]]:  #Add vcc and gnd to the inputs
-                all_inputs[module_names[i]].append('vscale_core#vcc')
-                all_inputs[module_names[i]].append('vscale_core#gnd')
-                modules[i] = modules[i].replace('1\'b0', 'gnd')
+            if modules[i].find('1\'b1') >= 0 and module_names[i]+'#vcc' not in all_inputs[module_names[i]]:
+                all_inputs[module_names[i]].append(module_names[i] + '#vcc')
                 modules[i] = modules[i].replace('1\'b1', 'vcc')
+            if modules[i].find('1\'b0') >= 0 and module_names[i] + '#gnd' not in all_inputs[module_names[i]]:
+                all_inputs[module_names[i]].append(module_names[i] + '#gnd')
+                modules[i] = modules[i].replace('1\'b0', 'gnd')
 
         if len(all_outputs[module_names[i]]) == 0:  #Find all the output statements
             pattern = re.compile('output.*?;', re.S)
@@ -118,8 +125,10 @@ while True:
         module_lines = modules[i].split('\n')
         for line in module_lines:
             line = line.strip()
-            if re.match('[A-Z].*?_.*? .*', line, re.S) or line.find('DFF_')>=0:  # #Recognize all the gate statements
-                obj_name = line[: line.find('_')]
+            if (re.match('[A-Z|a-z].*? .*? .*', line, re.S) or line.find('DFF_')>=0) and line.find('assign') < 0:  # #Recognize all the gate statements
+                obj_name = line[: line.find(' ')]
+                if obj_name.find('_') >= 0:
+                    obj_name = obj_name[: obj_name.find('_')]
                 if obj_name in gate_names:
                     input_num = 0
                     tag = line[line.find(' '): line.find('(')].strip()
@@ -129,6 +138,7 @@ while True:
                     block = block[block.find('('): block.find(';')]
                     block = block.replace('\n', '')
                     args = block[1: -1].split(',')
+                    # print(args)
                     gate_inputs = []
                     gate_output = ''
                     gate_type = ''
@@ -203,21 +213,43 @@ while True:
                     elif obj_name.find('DFF') >= 0:
                         input_num = 2
                         gate_type = 'DFF'
+                    else:
+                        input_num = len(args)-1
+                        gate_type = obj_name
 
                     flag1 = True         #Check if all the inputs of the gates are the module inputs or the outputs of some gate
                     if gate_type != 'DFF':
                         for j in range(0, input_num):
-                            gate_input = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(')')].strip()
-                            if not (gate_input in all_inputs[module_names[i]] or gate_input in all_gates[
-                                module_names[i]].keys() or gate_input in all_outputs[module_names[i]]):
-                                flag1 = False
-                                break
+                            if args[j].find('.') >= 0:
+                                gate_input = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(')')].strip()
+                                if not (gate_input in all_inputs[module_names[i]] or gate_input in all_gates[
+                                    module_names[i]].keys()):
+                                    flag1 = False
+                                    break
+                                else:
+                                    gate_inputs.append(gate_input)
+                                    if gate_input not in all_appearing_inputs[module_names[i]] and gate_input in all_inputs[module_names[i]]:
+                                        all_appearing_inputs[module_names[i]].append(gate_input)
                             else:
-                                gate_inputs.append(gate_input)
+                                gate_input = module_names[i] + '#' + args[-(j+1)].strip().strip('()')
+                                if not (gate_input in all_inputs[module_names[i]] or gate_input in all_gates[
+                                    module_names[i]].keys()):
+                                    flag1 = False
+                                    break
+                                else:
+                                    gate_inputs.append(gate_input)
+                                    if gate_input not in all_appearing_inputs[module_names[i]] and gate_input in all_inputs[module_names[i]]:
+                                        all_appearing_inputs[module_names[i]].append(gate_input)
                     if flag1:
                         if gate_type != 'HA' and gate_type != 'FA' and gate_type.find('OAI') < 0 and gate_type.find('AOI') < 0 and gate_type.find('MUX') < 0 and gate_type != 'DFF':
-                            gate_output = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                            all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,gate_type)
+                            if args[-1].find('.') >= 0:
+                                gate_output = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,gate_type)
+                            else:
+                                # print(args)
+                                gate_output = module_names[i] + '#' +args[0].strip()
+                                all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,
+                                                                               gate_type)
                         else:
                             if gate_type == 'FA':  #Transform such gates into simple gates
                                 gate_output1 = module_names[i] + '#'+tag+'_HA_xor1'
@@ -419,12 +451,25 @@ while True:
 
             elif re.match('.*?assign .*?=.*?;', line, re.S):
                 lhs = line[line.find('assign')+7: line.find('=')].strip()
-                gate_output = module_names[i] + '#' + lhs
-                if gate_output not in list(all_gates[module_names[i]].keys()):
-                    if line.find('vcc') >= 0:
-                        all_gates[module_names[i]][gate_output] = Gate(1, [module_names[i] + '#' +'vcc'], gate_output, 'buf')
-                    elif line.find('gnd') >= 0:
-                        all_gates[module_names[i]][gate_output] = Gate(1, [module_names[i] + '#' +'gnd'], gate_output, 'buf')
+                rhs = line[line.find('=')+1: line.find(';')].strip()
+                # print(rhs)
+                if module_names[i] + '#' +rhs in all_inputs[module_names[i]] or module_names[i]+'#' +rhs in all_gates[module_names[i]].keys():
+
+                    if module_names[i] + '#' +lhs not in all_outputs[module_names[i]]:
+                        modules[i] = modules[i].replace(lhs, rhs)
+                        if rhs in all_pending[module_names[i]]:
+                            all_pending[module_names[i]].remove(rhs)
+                    else:
+                        gate_output = module_names[i] + '#' + lhs
+                        if gate_output not in list(all_gates[module_names[i]].keys()):
+                            all_gates[module_names[i]][gate_output] = Gate(1, [module_names[i] + '#' +rhs], gate_output, 'buf')
+                    if module_names[i] + '#'+rhs not in all_appearing_inputs[module_names[i]] and module_names[i] + '#'+rhs in all_inputs[
+                        module_names[i]]:
+                        all_appearing_inputs[module_names[i]].append(module_names[i] + '#'+rhs)
+                else:
+                    if lhs not in all_pending[module_names[i]]:
+                        all_pending[module_names[i]].append(rhs)
+
                     # print(gate_output)
 
             #TODO: These are for module instantiation statements, which have not been successfully tuned
@@ -627,8 +672,8 @@ for i in range(0, len(module_names)):  #Generate bench files
     seq_num = 1
     bench_text = ''
     gate_dict = dict()
-    for j in range(0, len(all_inputs[module_names[i]])):
-        gate_dict[all_inputs[module_names[i]][j]] = seq_num
+    for j in range(0, len(all_appearing_inputs[module_names[i]])):
+        gate_dict[all_appearing_inputs[module_names[i]][j]] = seq_num
         bench_text = bench_text + 'INPUT(G' + str(seq_num) + 'gat)\n'  #Add inputs of the bench
         seq_num = seq_num + 1
 
@@ -653,6 +698,7 @@ for i in range(0, len(module_names)):  #Generate bench files
     file = open('./benchfiles/'+module_names[i]+'.bench', 'w')
     file.write(bench_text)
     file.close()
+
 
 
 
