@@ -24,7 +24,7 @@ file.close()
 pattern = re.compile('module.*?endmodule', re.S)  #Recognize the module definition
 modules = pattern.findall(verilog_text)
 module_names = [e[e.find('module ') + 7: e.find(' (')] for e in modules]
-gate_names = ['and','or','nand','nor','xor','xnor','buf','not','AND2','AND3','AND4','BUF','CLKBUF','AOI211','AOI21','AOI221','AOI222','AOI22','DFF','FA','HA','INV','MUX2','NAND2','NAND3','NAND4','NOR2','NOR3','NOR4','OAI211','OAI21','OAI221','OAI222','OAI22','OAI33','OR2','OR3','OR4','XNOR2']
+gate_names = ['and','or','nand','nor','xor','xnor','buf','not','AND2','AND3','AND4','BUF','CLKBUF','AOI211','AOI21','AOI221','AOI222','AOI22','DFF','FA','HA','INV','MUX2','NAND2','NAND3','NAND4','NOR2','NOR3','NOR4','OAI211','OAI21','OAI221','OAI222','OAI22','OAI33','OR2','OR3','OR4','XNOR2','XOR2']
 all_inputs = dict()    #Some global data structures
 all_outputs = dict()
 all_gates = dict()
@@ -33,7 +33,10 @@ all_outtags = dict()
 all_pending = dict()
 all_status = dict()
 all_wires = dict()
+all_waittags = dict()
 all_appearing_inputs = dict()
+
+os.popen('mkdir -p benchfiles')
 
 for i in range(0, len(module_names)):
     all_inputs[module_names[i]] = []
@@ -42,85 +45,129 @@ for i in range(0, len(module_names)):
     all_gates[module_names[i]] = dict()
     all_tags[module_names[i]] = []
     all_outtags[module_names[i]] = []
+    all_waittags[module_names[i]] = []
     all_pending[module_names[i]] = []
     all_wires[module_names[i]] = []
     all_status[module_names[i]] = False
 
-if 'vscale_core' in module_names:
-    all_status['vscale_core'] = True  #Skip the top module because it has sub-module instantiations
+# if 'vscale_core' in module_names:
+#     all_status['vscale_core'] = True  #Skip the top module because it has sub-module instantiations
+for i in range(0, len(module_names)):
+    if len(all_inputs[module_names[i]]) == 0:
+        pattern = re.compile('input.*?;', re.S)  # Find all the input statements
+        inputs = pattern.findall(modules[i])
+        for input in inputs:
+            input = input.replace('input', '').strip(' ;')
+            items = input.split(',')
+            for item in items:
+                item = item.strip()
+                if item[0] == '[' and input.find(':') >= 0:
+                    begin = int(input[input.find(':') + 1: input.find(']')])
+                    end = int(input[input.find('[') + 1: input.find(':')])
+                    if begin == 0 and end == 0:
+                        all_inputs[module_names[i]].append(module_names[i] + '#' + item[:item.find('[')])
+                        continue
+                    name = item[item.find(']') + 1:].strip()
+                    for j in range(begin, end + 1):
+                        all_inputs[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
+                else:
+                    all_inputs[module_names[i]].append(module_names[i] + '#' + item)
+        if modules[i].find('1\'b1') >= 0 and module_names[i] + '#vcc' not in all_inputs[module_names[i]]:
+            all_inputs[module_names[i]].append(module_names[i] + '#vcc')
+            modules[i] = modules[i].replace('1\'b1', 'vcc')
+        if modules[i].find('1\'b0') >= 0 and module_names[i] + '#gnd' not in all_inputs[module_names[i]]:
+            all_inputs[module_names[i]].append(module_names[i] + '#gnd')
+            modules[i] = modules[i].replace('1\'b0', 'gnd')
+
+    if len(all_outputs[module_names[i]]) == 0:  # Find all the output statements
+        pattern = re.compile('output.*?;', re.S)
+        outputs = pattern.findall(modules[i])
+        for output in outputs:
+            output = output.replace('output', '').strip(' ;')
+            items = output.split(',')
+            for item in items:
+                item = item.strip()
+                if item[0] == '[' and output.find(':') >= 0:
+                    begin = int(output[output.find(':') + 1: output.find(']')])
+                    end = int(output[output.find('[') + 1: output.find(':')])
+                    name = item[item.find(']') + 1:].strip()
+                    for j in range(begin, end + 1):
+                        all_outputs[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
+                else:
+                    all_outputs[module_names[i]].append(module_names[i] + '#' + item)
+
+    if len(all_wires[module_names[i]]) == 0:  # Find all the wire statements
+        pattern = re.compile('wire.*?;', re.S)
+        wires = pattern.findall(modules[i])
+        for wire in wires:
+            wire = wire.replace('wire', '').strip(' ;')
+            items = wire.split(',')
+            for item in items:
+                item = item.strip()
+                if item[0] == '[' and wire.find(':') >= 0:
+                    begin = int(wire[wire.find(':') + 1: wire.find(']')])
+                    end = int(wire[wire.find('[') + 1: wire.find(':')])
+                    name = item[item.find(']') + 1:].strip()
+                    for j in range(begin, end + 1):
+                        all_wires[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
+                else:
+                    all_wires[module_names[i]].append(module_names[i] + '#' + item)
+
+    # for item in all_inputs[module_names[i]]:
+    #     ori_item = item[item.find('#') + 1:item.find('[')]
+    #     if item.find('[') >= 0 and modules[i].find(ori_item) >= 0:
+    #         length = sum([1 for s in all_inputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+    #         if modules[i].find(ori_item + ')') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
+    #         elif modules[i].find(ori_item + ',') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
+    #         elif modules[i].find(ori_item + '}') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
+    #
+    # for item in all_outputs[module_names[i]]:
+    #     ori_item = item[item.find('#') + 1:item.find('[')]
+    #     if item.find('[') >= 0 and modules[i].find(ori_item) >= 0:
+    #         length = sum([1 for s in all_outputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+    #         if modules[i].find(ori_item + ')') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
+    #         elif modules[i].find(ori_item + ',') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
+    #         elif modules[i].find(ori_item + '}') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
+    # for item in all_wires[module_names[i]]:
+    #     ori_item = item[item.find('#') + 1:item.find('[')]
+    #     if item.find('[') >= 0 and modules[i].find(ori_item) >= 0:
+    #         length = sum([1 for s in all_wires[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+    #         if modules[i].find(ori_item + ')') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
+    #         elif modules[i].find(ori_item + ',') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
+    #         elif modules[i].find(ori_item + '}') >= 0:
+    #             modules[i] = modules[i].replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
+# file = open('new_whole.v', 'w')
+# file.write('\n'.join(modules))
+# file.close()
+# exit(0)
 
 while True:
+    # if 'vscale_core#pipeline_alu_src_b[0]' in all_gates['vscale_core'].keys():#all_inputs['vscale_core']:
+    #     print('found!')
+    #     exit(0)
     flag0 = True
     if sum([1 for i in range(0, len(module_names)) if all_status[module_names[i]] == False]) == 0:
         break
     if sum([1 for i in range(0, len(module_names)) if all_status[module_names[i]] == False]) == 1:
         flag0 = False
     for i in range(0, len(module_names)):
-        # if len(all_pending[module_names[i]]) > 0:
-        #     print(module_names[i], all_pending[module_names[i]])
+        if len(all_pending[module_names[i]]) > 0:
+            # print(all_pending[module_names[i]])
+            print(module_names[i], len(all_pending[module_names[i]]))
+            if len(all_pending[module_names[i]]) == 2170:
+                exit(0)
         if flag0 and module_names[i] == 'vscale_core':  #First handle other modules, leave the top module to the last
             continue
         if all_status[module_names[i]] == True:
             continue
-        if len(all_inputs[module_names[i]]) == 0:
-            pattern = re.compile('input.*?;', re.S)   #Find all the input statements
-            inputs = pattern.findall(modules[i])
-            for input in inputs:
-                input = input.replace('input', '').strip(' ;')
-                items = input.split(',')
-                for item in items:
-                    item = item.strip()
-                    if item[0] == '[' and input.find(':') >= 0:
-                        begin = int(input[input.find(':') + 1: input.find(']')])
-                        end = int(input[input.find('[') + 1: input.find(':')])
-                        if begin == 0 and end == 0:
-                            all_inputs[module_names[i]].append(module_names[i] + '#' + item[:item.find('[')])
-                            continue
-                        name = item[item.find(']') + 1:].strip()
-                        for j in range(begin, end + 1):
-                            all_inputs[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
-                    else:
-                        all_inputs[module_names[i]].append(module_names[i] + '#' + item)
-            if modules[i].find('1\'b1') >= 0 and module_names[i]+'#vcc' not in all_inputs[module_names[i]]:
-                all_inputs[module_names[i]].append(module_names[i] + '#vcc')
-                modules[i] = modules[i].replace('1\'b1', 'vcc')
-            if modules[i].find('1\'b0') >= 0 and module_names[i] + '#gnd' not in all_inputs[module_names[i]]:
-                all_inputs[module_names[i]].append(module_names[i] + '#gnd')
-                modules[i] = modules[i].replace('1\'b0', 'gnd')
-
-        if len(all_outputs[module_names[i]]) == 0:  #Find all the output statements
-            pattern = re.compile('output.*?;', re.S)
-            outputs = pattern.findall(modules[i])
-            for output in outputs:
-                output = output.replace('output', '').strip(' ;')
-                items = output.split(',')
-                for item in items:
-                    item = item.strip()
-                    if item[0] == '[' and output.find(':') >= 0:
-                        begin = int(output[output.find(':') + 1: output.find(']')])
-                        end = int(output[output.find('[') + 1: output.find(':')])
-                        name = item[item.find(']') + 1:].strip()
-                        for j in range(begin, end + 1):
-                            all_outputs[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
-                    else:
-                        all_outputs[module_names[i]].append(module_names[i] + '#' + item)
-
-        if len(all_wires[module_names[i]]) == 0:        #Find all the wire statements
-            pattern = re.compile('wire.*?;', re.S)
-            wires = pattern.findall(modules[i])
-            for wire in wires:
-                wire = wire.replace('wire', '').strip(' ;')
-                items = wire.split(',')
-                for item in items:
-                    item = item.strip()
-                    if item[0] == '[' and wire.find(':') >= 0:
-                        begin = int(wire[wire.find(':') + 1: wire.find(']')])
-                        end = int(wire[wire.find('[') + 1: wire.find(':')])
-                        name = item[item.find(']') + 1:].strip()
-                        for j in range(begin, end + 1):
-                            all_wires[module_names[i]].append(module_names[i] + '#' + name + '[' + str(j) + ']')
-                    else:
-                        all_wires[module_names[i]].append(module_names[i] + '#' + item)
 
         module_lines = modules[i].split('\n')
         for line in module_lines:
@@ -132,9 +179,10 @@ while True:
                 if obj_name in gate_names:
                     input_num = 0
                     tag = line[line.find(' '): line.find('(')].strip()
+                    # print(tag)
                     if tag in all_tags[module_names[i]]:
                         continue
-                    block = modules[i][modules[i].find(tag):]  #Get the gate blocks
+                    block = modules[i][modules[i].find(' '+tag+' '):]  #Get the gate blocks
                     block = block[block.find('('): block.find(';')]
                     block = block.replace('\n', '')
                     args = block[1: -1].split(',')
@@ -171,33 +219,33 @@ while True:
                     elif obj_name.find('OAI211') >= 0:
                         input_num = 4
                         gate_type = 'OAI211'
+                    elif obj_name.find('OAI222') >= 0:
+                        input_num = 6
+                        gate_type = 'OAI222'
+                    elif obj_name.find('OAI221') >= 0:
+                        input_num = 5
+                        gate_type = 'OAI221'
                     elif obj_name.find('OAI21') >= 0:
                         input_num = 3
                         gate_type = 'OAI21'
                     elif obj_name.find('OAI22') >= 0:
-                        input_num = 3
-                        gate_type = 'OAI21'
-                    elif obj_name.find('OAI221') >= 0:
-                        input_num = 5
-                        gate_type = 'OAI221'
-                    elif obj_name.find('OAI222') >= 0:
-                        input_num = 6
-                        gate_type = 'OAI222'
+                        input_num = 4
+                        gate_type = 'OAI22'
                     elif obj_name.find('OAI33') >= 0: #'AOI211','AOI21','AOI221','AOI222','AOI22'
                         input_num = 6
                         gate_type = 'OAI33'
                     elif obj_name.find('AOI211') >= 0:
                         input_num = 4
                         gate_type = 'AOI211'
-                    elif obj_name.find('AOI21') >= 0:
-                        input_num = 3
-                        gate_type = 'AOI21'
                     elif obj_name.find('AOI221') >= 0:
                         input_num = 5
                         gate_type = 'AOI221'
                     elif obj_name.find('AOI222') >= 0:
                         input_num = 6
                         gate_type = 'AOI222'
+                    elif obj_name.find('AOI21') >= 0:
+                        input_num = 3
+                        gate_type = 'AOI21'
                     elif obj_name.find('AOI22') >= 0:
                         input_num = 4
                         gate_type = 'AOI22'
@@ -220,12 +268,24 @@ while True:
                     flag1 = True         #Check if all the inputs of the gates are the module inputs or the outputs of some gate
                     if gate_type != 'DFF':
                         for j in range(0, input_num):
+                            # print(tag, input_num, args)
                             if args[j].find('.') >= 0:
-                                gate_input = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(')')].strip()
+                                if args[j][args[j].find('(') + 1: args[j].find(')')].strip().find(module_names[i]+'#') >= 0:
+                                    gate_input = args[j][args[j].find('(') + 1: args[j].find(')')].strip()
+                                else:
+                                    gate_input = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(')')].strip()
                                 if not (gate_input in all_inputs[module_names[i]] or gate_input in all_gates[
                                     module_names[i]].keys()):
+                                    print(gate_input)
                                     flag1 = False
-                                    break
+                                    gate_inputs.append(gate_input)
+                                    gate_input = gate_input[gate_input.find('#')+1: ]
+                                    if gate_input.find('[') >= 0:
+                                        gate_input = gate_input[: gate_input.find('[')+1]
+                                    # temp = modules[i].replace(' ', '').replace('\n', '')
+                                    # if temp.find('.ZN('+gate_input) < 0 and temp.find('.Z('+gate_input) < 0 and temp.find('.CO('+gate_input) < 0 and temp.find('.S('+gate_input) < 0 and temp.find('.QN('+gate_input) < 0 and temp.find('.Q('+gate_input) < 0 :
+                                    #     print(gate_input)
+                                    # break
                                 else:
                                     gate_inputs.append(gate_input)
                                     if gate_input not in all_appearing_inputs[module_names[i]] and gate_input in all_inputs[module_names[i]]:
@@ -241,210 +301,222 @@ while True:
                                     if gate_input not in all_appearing_inputs[module_names[i]] and gate_input in all_inputs[module_names[i]]:
                                         all_appearing_inputs[module_names[i]].append(gate_input)
                     if flag1:
-                        if gate_type != 'HA' and gate_type != 'FA' and gate_type.find('OAI') < 0 and gate_type.find('AOI') < 0 and gate_type.find('MUX') < 0 and gate_type != 'DFF':
-                            if args[-1].find('.') >= 0:
-                                gate_output = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,gate_type)
+                        if True: #tag not in all_waittags:
+                            if gate_type != 'HA' and gate_type != 'FA' and gate_type.find('OAI') < 0 and gate_type.find('AOI') < 0 and gate_type.find('MUX') < 0 and gate_type != 'DFF':
+                                if args[-1].find('.') >= 0:
+                                    gate_output = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,gate_type)
+                                else:
+                                    # print(args)
+                                    gate_output = module_names[i] + '#' +args[0].strip()
+                                    all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,
+                                                                                   gate_type)
                             else:
-                                # print(args)
-                                gate_output = module_names[i] + '#' +args[0].strip()
-                                all_gates[module_names[i]][gate_output] = Gate(input_num, gate_inputs, gate_output,
-                                                                               gate_type)
-                        else:
-                            if gate_type == 'FA':  #Transform such gates into simple gates
-                                gate_output1 = module_names[i] + '#'+tag+'_HA_xor1'
-                                temp_inputs = [gate_inputs[e] for e in range(0, 2)]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1,'xor')
-                                gate_output2 = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output1, gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2,'xor')
-                                gate_output3 = module_names[i] + '#'+tag+'_HA_or1'
-                                temp_inputs = [gate_inputs[e] for e in range(0, 2)]
-                                all_gates[module_names[i]][gate_output3] = Gate(2, temp_inputs, gate_output3,'or')
-                                gate_output4 = module_names[i] + '#' + tag + '_HA_and1'
-                                temp_inputs = [gate_output3, gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output4] = Gate(2, temp_inputs, gate_output4, 'and')
-                                gate_output5 = module_names[i] + '#' + tag + '_HA_and2'
-                                temp_inputs = [gate_inputs[e] for e in range(0, 2)]
-                                all_gates[module_names[i]][gate_output5] = Gate(2, temp_inputs, gate_output5, 'and')
-                                gate_output6 = module_names[i] + '#'+args[-2][args[-2].find('(') + 1: args[-2].find(')')].strip()
-                                temp_inputs = [gate_output4, gate_output5]
-                                all_gates[module_names[i]][gate_output6] = Gate(2, temp_inputs, gate_output6, 'or')
-                            elif gate_type == 'HA':
-                                gate_output1 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                all_gates[module_names[i]][gate_output1] = Gate(2, gate_inputs, gate_output1, 'xor')
-                                gate_output2 = module_names[i] + '#' + args[-2][args[-2].find('(') + 1: args[-2].find(')')].strip()
-                                all_gates[module_names[i]][gate_output2] = Gate(2, gate_inputs, gate_output2, 'and')
-                            elif gate_type == 'MUX2':
-                                gate_output1 = module_names[i] + '#' + tag + '_MUX_not1'
-                                temp_inputs = [gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output1] = Gate(1, temp_inputs, gate_output1, 'not')
-                                gate_output2 = module_names[i] + '#' + tag + '_MUX_and1'
-                                temp_inputs = [gate_output1, gate_inputs[0]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output3 = module_names[i] + '#' + tag + '_MUX_and2'
-                                temp_inputs = [gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output3] = Gate(2, temp_inputs, gate_output3, 'and')
-                                gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output2, gate_output3]
-                                all_gates[module_names[i]][gate_output4] = Gate(2, temp_inputs, gate_output4, 'or')
-                            elif gate_type == 'OAI211':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1], gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(3, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
-                            elif gate_type == 'OAI21':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[0], gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
-                            elif gate_type == 'OAI221':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_or2'
-                                temp_inputs = [gate_inputs[3], gate_inputs[4]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
-                                gate_output3 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[0], gate_output2, gate_output1]
-                                all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'and')
-                                gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output3]
-                                all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
-                            elif gate_type == 'OAI222':
-                                gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1]]
-                                all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'or')
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_or2'
-                                temp_inputs = [gate_inputs[5], gate_inputs[4]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
-                                gate_output3 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_output0, gate_output2, gate_output1]
-                                all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'and')
-                                gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output3]
-                                all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
-                            elif gate_type == 'OAI22':
-                                gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1]]
-                                all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'or')
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_output0, gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
-                                    ')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
-                            elif gate_type == 'OAI33':
-                                gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output0] = Gate(3, temp_inputs, gate_output0, 'or')
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[3], gate_inputs[4], gate_inputs[5]]
-                                all_gates[module_names[i]][gate_output1] = Gate(3, temp_inputs, gate_output1, 'or')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_output0, gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
-                                    ')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
-                            elif gate_type == 'AOI211':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1], gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(3, temp_inputs, gate_output2, 'or')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
-                                    ')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
-                            elif gate_type == 'AOI21':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[0], gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
-                            elif gate_type == 'AOI221':
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[1], gate_inputs[2]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and2'
-                                temp_inputs = [gate_inputs[3], gate_inputs[4]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_inputs[0], gate_output2, gate_output1]
-                                all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'or')
-                                gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output3]
-                                all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
-                            elif gate_type == 'AOI222':
-                                gate_output0 = module_names[i] + '#' + tag + '_OAI_and0'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1]]
-                                all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'and')
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_and2'
-                                temp_inputs = [gate_inputs[5], gate_inputs[4]]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
-                                gate_output3 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_output0, gate_output2, gate_output1]
-                                all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'or')
-                                gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
-                                temp_inputs = [gate_output3]
-                                all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
-                            elif gate_type == 'AOI22':
-                                gate_output0 = module_names[i] + '#' + tag + '_OAI_and0'
-                                temp_inputs = [gate_inputs[0], gate_inputs[1]]
-                                all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'and')
-                                gate_output1 = module_names[i] + '#' + tag + '_OAI_and1'
-                                temp_inputs = [gate_inputs[2], gate_inputs[3]]
-                                all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
-                                gate_output2 = module_names[i] + '#' + tag + '_OAI_or1'
-                                temp_inputs = [gate_output0, gate_output1]
-                                all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
-                                gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
-                                    ')')].strip()
-                                temp_inputs = [gate_output2]
-                                all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
-                            elif gate_type == 'DFF':
-                                for j in range(0, input_num):
-                                    arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
-                                    ')')].strip()
-                                    if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
-                                        all_outputs[module_names[i]].append(arg_name)
-                                for j in range(input_num, len(args)):
-                                    arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
+                                if gate_type == 'FA':  #Transform such gates into simple gates
+                                    gate_output1 = module_names[i] + '#'+tag+'_FA_xor1'
+                                    temp_inputs = [gate_inputs[e] for e in range(0, 2)]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1,'xor')
+                                    gate_output2 = module_names[i] + '#'+args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output1, gate_inputs[2]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2,'xor')
+                                    gate_output3 = module_names[i] + '#'+tag+'_FA_or1'
+                                    temp_inputs = [gate_inputs[e] for e in range(0, 2)]
+                                    all_gates[module_names[i]][gate_output3] = Gate(2, temp_inputs, gate_output3,'or')
+                                    gate_output4 = module_names[i] + '#' + tag + '_FA_and1'
+                                    temp_inputs = [gate_output3, gate_inputs[2]]
+                                    all_gates[module_names[i]][gate_output4] = Gate(2, temp_inputs, gate_output4, 'and')
+                                    gate_output5 = module_names[i] + '#' + tag + '_FA_and2'
+                                    temp_inputs = [gate_inputs[e] for e in range(0, 2)]
+                                    all_gates[module_names[i]][gate_output5] = Gate(2, temp_inputs, gate_output5, 'and')
+                                    gate_output6 = module_names[i] + '#'+args[-2][args[-2].find('(') + 1: args[-2].find(')')].strip()
+                                    temp_inputs = [gate_output4, gate_output5]
+                                    all_gates[module_names[i]][gate_output6] = Gate(2, temp_inputs, gate_output6, 'or')
+                                elif gate_type == 'HA':
+                                    gate_output1 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, gate_inputs, gate_output1, 'xor')
+                                    gate_output2 = module_names[i] + '#' + args[-2][args[-2].find('(') + 1: args[-2].find(')')].strip()
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, gate_inputs, gate_output2, 'and')
+                                elif gate_type == 'MUX2':
+                                    gate_output1 = module_names[i] + '#' + tag + '_MUX_not1'
+                                    temp_inputs = [gate_inputs[2]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(1, temp_inputs, gate_output1, 'not')
+                                    gate_output2 = module_names[i] + '#' + tag + '_MUX_and1'
+                                    temp_inputs = [gate_output1, gate_inputs[0]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output3 = module_names[i] + '#' + tag + '_MUX_and2'
+                                    temp_inputs = [gate_inputs[1], gate_inputs[2]]
+                                    all_gates[module_names[i]][gate_output3] = Gate(2, temp_inputs, gate_output3, 'and')
+                                    gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output2, gate_output3]
+                                    all_gates[module_names[i]][gate_output4] = Gate(2, temp_inputs, gate_output4, 'or')
+                                elif gate_type == 'OAI211':
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3], gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(3, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
+                                elif gate_type == 'OAI21':
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_inputs[2], gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
+                                elif gate_type == 'OAI221':
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_or2'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
+                                    gate_output3 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_inputs[4], gate_output2, gate_output1]
+                                    all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'and')
+                                    gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output3]
+                                    all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
+                                elif gate_type == 'OAI222':
+                                    gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'or')
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_or2'
+                                    temp_inputs = [gate_inputs[5], gate_inputs[4]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
+                                    gate_output3 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_output0, gate_output2, gate_output1]
+                                    all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'and')
+                                    gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output3]
+                                    all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
+                                elif gate_type == 'OAI22':
+                                    # print(tag)
+                                    gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'or')
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_output0, gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
                                         ')')].strip()
-                                    if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
-                                        all_inputs[module_names[i]].append(arg_name)
-
-                        all_tags[module_names[i]].append(tag)
-
-                        if tag in all_pending[module_names[i]]:
-                            all_pending[module_names[i]].remove(tag)
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
+                                elif gate_type == 'OAI33':
+                                    gate_output0 = module_names[i] + '#' + tag + '_OAI_or0'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1], gate_inputs[2]]
+                                    all_gates[module_names[i]][gate_output0] = Gate(3, temp_inputs, gate_output0, 'or')
+                                    gate_output1 = module_names[i] + '#' + tag + '_OAI_or1'
+                                    temp_inputs = [gate_inputs[3], gate_inputs[4], gate_inputs[5]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(3, temp_inputs, gate_output1, 'or')
+                                    gate_output2 = module_names[i] + '#' + tag + '_OAI_and1'
+                                    temp_inputs = [gate_output0, gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
+                                        ')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
+                                elif gate_type == 'AOI211':
+                                    gate_output1 = module_names[i] + '#' + tag + '_AOI_and1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output2 = module_names[i] + '#' + tag + '_AOI_or1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3], gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(3, temp_inputs, gate_output2, 'or')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
+                                        ')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
+                                elif gate_type == 'AOI221':
+                                    gate_output1 = module_names[i] + '#' + tag + '_AOI_and1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output2 = module_names[i] + '#' + tag + '_AOI_and2'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + tag + '_AOI_or1'
+                                    temp_inputs = [gate_inputs[4], gate_output2, gate_output1]
+                                    all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'or')
+                                    gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output3]
+                                    all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
+                                elif gate_type == 'AOI21':
+                                    gate_output1 = module_names[i] + '#' + tag + '_AOI_and1'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output2 = module_names[i] + '#' + tag + '_AOI_or1'
+                                    temp_inputs = [gate_inputs[2], gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
+                                elif gate_type == 'AOI222':
+                                    gate_output0 = module_names[i] + '#' + tag + '_AOI_and0'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'and')
+                                    gate_output1 = module_names[i] + '#' + tag + '_AOI_and1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output2 = module_names[i] + '#' + tag + '_AOI_and2'
+                                    temp_inputs = [gate_inputs[4], gate_inputs[5]]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'and')
+                                    gate_output3 = module_names[i] + '#' + tag + '_AOI_or1'
+                                    temp_inputs = [gate_output0, gate_output2, gate_output1]
+                                    all_gates[module_names[i]][gate_output3] = Gate(3, temp_inputs, gate_output3, 'or')
+                                    gate_output4 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
+                                    temp_inputs = [gate_output3]
+                                    all_gates[module_names[i]][gate_output4] = Gate(1, temp_inputs, gate_output4, 'not')
+                                elif gate_type == 'AOI22':
+                                    gate_output0 = module_names[i] + '#' + tag + '_AOI_and0'
+                                    temp_inputs = [gate_inputs[0], gate_inputs[1]]
+                                    all_gates[module_names[i]][gate_output0] = Gate(2, temp_inputs, gate_output0, 'and')
+                                    gate_output1 = module_names[i] + '#' + tag + '_AOI_and1'
+                                    temp_inputs = [gate_inputs[2], gate_inputs[3]]
+                                    all_gates[module_names[i]][gate_output1] = Gate(2, temp_inputs, gate_output1, 'and')
+                                    gate_output2 = module_names[i] + '#' + tag + '_AOI_or1'
+                                    temp_inputs = [gate_output0, gate_output1]
+                                    all_gates[module_names[i]][gate_output2] = Gate(2, temp_inputs, gate_output2, 'or')
+                                    gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(
+                                        ')')].strip()
+                                    temp_inputs = [gate_output2]
+                                    all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
+                                elif gate_type == 'DFF':
+                                    for j in range(0, input_num):
+                                        arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
+                                        ')')].strip()
+                                        if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
+                                            all_outputs[module_names[i]].append(arg_name)
+                                    for j in range(input_num, len(args)):
+                                        arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
+                                            ')')].strip()
+                                        if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
+                                            all_inputs[module_names[i]].append(arg_name)
+                                            # print(arg_name)
+                                        elif arg_name in all_outputs[module_names[i]]:
+                                            all_outputs[module_names[i]].remove(arg_name)
+                                            all_inputs[module_names[i]].append(arg_name)
+                        # if tag not in all_waittags:
+                        #     all_waittags[module_names[i]].append(tag)
+                        if flag1:
+                            all_tags[module_names[i]].append(tag)
+                            if tag in all_pending[module_names[i]]:
+                                all_pending[module_names[i]].remove(tag)
+                            # if tag in all_waittags[module_names[i]]:
+                            #     all_waittags[module_names[i]].remove(tag)
+                        else:
+                            if tag not in all_pending[module_names[i]]:
+                                all_pending[module_names[i]].append(tag)
                     else:
                         if tag not in all_pending[module_names[i]]:
                             all_pending[module_names[i]].append(tag)
@@ -454,20 +526,16 @@ while True:
                 rhs = line[line.find('=')+1: line.find(';')].strip()
                 # print(rhs)
                 if module_names[i] + '#' +rhs in all_inputs[module_names[i]] or module_names[i]+'#' +rhs in all_gates[module_names[i]].keys():
-
-                    if module_names[i] + '#' +lhs not in all_outputs[module_names[i]]:
-                        modules[i] = modules[i].replace(lhs, rhs)
-                        if rhs in all_pending[module_names[i]]:
-                            all_pending[module_names[i]].remove(rhs)
-                    else:
-                        gate_output = module_names[i] + '#' + lhs
-                        if gate_output not in list(all_gates[module_names[i]].keys()):
-                            all_gates[module_names[i]][gate_output] = Gate(1, [module_names[i] + '#' +rhs], gate_output, 'buf')
+                    gate_output = module_names[i] + '#' + lhs
+                    if gate_output not in list(all_gates[module_names[i]].keys()):
+                        all_gates[module_names[i]][gate_output] = Gate(1, [module_names[i] + '#' +rhs], gate_output, 'buf')
+                    if rhs in all_pending[module_names[i]]:
+                        all_pending[module_names[i]].remove(rhs)
                     if module_names[i] + '#'+rhs not in all_appearing_inputs[module_names[i]] and module_names[i] + '#'+rhs in all_inputs[
                         module_names[i]]:
                         all_appearing_inputs[module_names[i]].append(module_names[i] + '#'+rhs)
                 else:
-                    if lhs not in all_pending[module_names[i]]:
+                    if rhs not in all_pending[module_names[i]]:
                         all_pending[module_names[i]].append(rhs)
 
                     # print(gate_output)
@@ -478,39 +546,39 @@ while True:
             #     tag = line[line.find(' '): line.find('(')].strip()
             #     if tag in all_tags[module_names[i]]:
             #         continue
-            #     block = modules[i][modules[i].find(tag):]
+            #     block = modules[i][modules[i].find(' '+tag+' '):]
             #     block = block[block.find('('): block.find(';')]
             #     block = block.replace('\n', '')
-            #     for item in all_inputs[module_names[i]]:
-            #         ori_item = item[item.find('#') + 1:item.find('[')]
-            #         if item.find('[') >= 0 and block.find(ori_item) >= 0:
-            #             length = sum([1 for s in all_inputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
-            #             if block.find(ori_item+')') >= 0:
-            #                 block = block.replace(ori_item+')', ori_item+'['+str(length-1)+':'+'0])')
-            #             elif block.find(ori_item+',') >= 0:
-            #                 block = block.replace(ori_item+',', ori_item+'['+str(length-1)+':'+'0],')
-            #             elif block.find(ori_item+'}') >= 0:
-            #                 block = block.replace(ori_item+'}', ori_item+'['+str(length-1)+':'+'0]}')
-            #     for item in all_outputs[module_names[i]]:
-            #         ori_item = item[item.find('#') + 1:item.find('[')]
-            #         if item.find('[') >= 0 and block.find(ori_item) >= 0:
-            #             length = sum([1 for s in all_outputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
-            #             if block.find(ori_item + ')') >= 0:
-            #                 block = block.replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
-            #             elif block.find(ori_item + ',') >= 0:
-            #                 block = block.replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
-            #             elif block.find(ori_item + '}') >= 0:
-            #                 block = block.replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
-            #     for item in all_wires[module_names[i]]:
-            #         ori_item = item[item.find('#') + 1:item.find('[')]
-            #         if item.find('[') >= 0 and block.find(ori_item) >= 0:
-            #             length = sum([1 for s in all_wires[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
-            #             if block.find(ori_item + ')') >= 0:
-            #                 block = block.replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
-            #             elif block.find(ori_item + ',') >= 0:
-            #                 block = block.replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
-            #             elif block.find(ori_item + '}') >= 0:
-            #                 block = block.replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
+            #     # for item in all_inputs[module_names[i]]:
+            #     #     ori_item = item[item.find('#') + 1:item.find('[')]
+            #     #     if item.find('[') >= 0 and block.find(ori_item) >= 0:
+            #     #         length = sum([1 for s in all_inputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+            #     #         if block.find(ori_item+')') >= 0:
+            #     #             block = block.replace(ori_item+')', ori_item+'['+str(length-1)+':'+'0])')
+            #     #         elif block.find(ori_item+',') >= 0:
+            #     #             block = block.replace(ori_item+',', ori_item+'['+str(length-1)+':'+'0],')
+            #     #         elif block.find(ori_item+'}') >= 0:
+            #     #             block = block.replace(ori_item+'}', ori_item+'['+str(length-1)+':'+'0]}')
+            #     # for item in all_outputs[module_names[i]]:
+            #     #     ori_item = item[item.find('#') + 1:item.find('[')]
+            #     #     if item.find('[') >= 0 and block.find(ori_item) >= 0:
+            #     #         length = sum([1 for s in all_outputs[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+            #     #         if block.find(ori_item + ')') >= 0:
+            #     #             block = block.replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
+            #     #         elif block.find(ori_item + ',') >= 0:
+            #     #             block = block.replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
+            #     #         elif block.find(ori_item + '}') >= 0:
+            #     #             block = block.replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
+            #     # for item in all_wires[module_names[i]]:
+            #     #     ori_item = item[item.find('#') + 1:item.find('[')]
+            #     #     if item.find('[') >= 0 and block.find(ori_item) >= 0:
+            #     #         length = sum([1 for s in all_wires[module_names[i]] if s.find(item[:item.find('[')]) >= 0])
+            #     #         if block.find(ori_item + ')') >= 0:
+            #     #             block = block.replace(ori_item + ')', ori_item + '[' + str(length - 1) + ':' + '0])')
+            #     #         elif block.find(ori_item + ',') >= 0:
+            #     #             block = block.replace(ori_item + ',', ori_item + '[' + str(length - 1) + ':' + '0],')
+            #     #         elif block.find(ori_item + '}') >= 0:
+            #     #             block = block.replace(ori_item + '}', ori_item + '[' + str(length - 1) + ':' + '0]}')
             #     args = block[1: -1].split('.')
             #     args = args[1:]
             #     flag2 = True
@@ -665,10 +733,10 @@ while True:
             all_status[module_names[i]] = True
             print(module_names[i])
 
-os.popen('mkdir -p benchfiles')
+
 for i in range(0, len(module_names)):  #Generate bench files
-    if module_names[i] == 'vscale_core':
-        continue
+    # if module_names[i] == 'vscale_core':
+    #     continue
     seq_num = 1
     bench_text = ''
     gate_dict = dict()
@@ -678,9 +746,10 @@ for i in range(0, len(module_names)):  #Generate bench files
         seq_num = seq_num + 1
 
     for j in range(0, len(all_outputs[module_names[i]])):
-        gate_dict[all_outputs[module_names[i]][j]] = seq_num
-        bench_text = bench_text + 'OUTPUT(G' + str(seq_num) + 'gat)\n'  #Add outputs of the bench
-        seq_num = seq_num + 1
+        if all_outputs[module_names[i]][j] in all_gates[module_names[i]].keys():
+            gate_dict[all_outputs[module_names[i]][j]] = seq_num
+            bench_text = bench_text + 'OUTPUT(G' + str(seq_num) + 'gat)\n'  #Add outputs of the bench
+            seq_num = seq_num + 1
 
     bench_text = bench_text + '\n'
 
@@ -698,7 +767,6 @@ for i in range(0, len(module_names)):  #Generate bench files
     file = open('./benchfiles/'+module_names[i]+'.bench', 'w')
     file.write(bench_text)
     file.close()
-
 
 
 
