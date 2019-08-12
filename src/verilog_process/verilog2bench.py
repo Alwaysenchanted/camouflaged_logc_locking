@@ -15,7 +15,6 @@ class Gate:
         self.output = output
         self.type = type
 
-
 verilog_file = sys.argv[1]
 file = open(verilog_file, 'r')
 verilog_text = file.read()
@@ -35,6 +34,7 @@ all_status = dict()
 all_wires = dict()
 all_waittags = dict()
 all_appearing_inputs = dict()
+all_output_relation = dict()
 
 os.popen('mkdir -p benchfiles')
 
@@ -49,6 +49,7 @@ for i in range(0, len(module_names)):
     all_pending[module_names[i]] = []
     all_wires[module_names[i]] = []
     all_status[module_names[i]] = False
+    all_output_relation[module_names[i]] = dict()
 
 # if 'vscale_core' in module_names:
 #     all_status['vscale_core'] = True  #Skip the top module because it has sub-module instantiations
@@ -162,8 +163,8 @@ while True:
         if len(all_pending[module_names[i]]) > 0:
             # print(all_pending[module_names[i]])
             print(module_names[i], len(all_pending[module_names[i]]))
-            if len(all_pending[module_names[i]]) == 2170:
-                exit(0)
+            # if len(all_pending[module_names[i]]) == 2170:
+            #     exit(0)
         if flag0 and module_names[i] == 'vscale_core':  #First handle other modules, leave the top module to the last
             continue
         if all_status[module_names[i]] == True:
@@ -276,7 +277,7 @@ while True:
                                     gate_input = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(')')].strip()
                                 if not (gate_input in all_inputs[module_names[i]] or gate_input in all_gates[
                                     module_names[i]].keys()):
-                                    print(gate_input)
+                                    # print(gate_input)
                                     flag1 = False
                                     gate_inputs.append(gate_input)
                                     gate_input = gate_input[gate_input.find('#')+1: ]
@@ -461,6 +462,7 @@ while True:
                                     gate_output3 = module_names[i] + '#' + args[-1][args[-1].find('(') + 1: args[-1].find(')')].strip()
                                     temp_inputs = [gate_output2]
                                     all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output2, 'not')
+
                                 elif gate_type == 'AOI222':
                                     gate_output0 = module_names[i] + '#' + tag + '_AOI_and0'
                                     temp_inputs = [gate_inputs[0], gate_inputs[1]]
@@ -492,20 +494,40 @@ while True:
                                     temp_inputs = [gate_output2]
                                     all_gates[module_names[i]][gate_output3] = Gate(1, temp_inputs, gate_output3, 'not')
                                 elif gate_type == 'DFF':
-                                    for j in range(0, input_num):
-                                        arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
-                                        ')')].strip()
-                                        if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
-                                            all_outputs[module_names[i]].append(arg_name)
-                                    for j in range(input_num, len(args)):
-                                        arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
-                                            ')')].strip()
-                                        if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
-                                            all_inputs[module_names[i]].append(arg_name)
-                                            # print(arg_name)
-                                        elif arg_name in all_outputs[module_names[i]]:
-                                            all_outputs[module_names[i]].remove(arg_name)
-                                            all_inputs[module_names[i]].append(arg_name)
+                                    # for j in range(0, input_num):
+                                    #     arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
+                                    #     ')')].strip()
+                                    #     if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
+                                    #         all_outputs[module_names[i]].append(arg_name)
+                                    # for j in range(input_num, len(args)):
+                                    #     arg_name = module_names[i] + '#' + args[j][args[j].find('(') + 1: args[j].find(
+                                    #         ')')].strip()
+                                    #     if arg_name not in all_inputs[module_names[i]] and arg_name not in all_outputs[module_names[i]]:
+                                    #         all_inputs[module_names[i]].append(arg_name)
+                                    #         # print(arg_name)
+                                    #     elif arg_name in all_outputs[module_names[i]]:
+                                    #         all_outputs[module_names[i]].remove(arg_name)
+                                    #         all_inputs[module_names[i]].append(arg_name)
+                                    if len(args) == 4:
+                                        gate_output1 = module_names[i] + '#' + args[-2][
+                                                                               args[-2].find('(') + 1: args[-2].find(
+                                                                                   ')')].strip()
+                                        temp_inputs = [module_names[i] + '#' +args[0][args[0].find('(') + 1: args[0].find(')')].strip()]
+                                        all_gates[module_names[i]][gate_output1] = Gate(1, temp_inputs, gate_output1, 'DFF')
+                                        gate_output2 = module_names[i] + '#' + args[-1][
+                                                                               args[-1].find('(') + 1: args[-1].find(
+                                                                                   ')')].strip()
+                                        temp_inputs = [gate_output1]
+                                        all_gates[module_names[i]][gate_output2] = Gate(1, temp_inputs, gate_output2, 'not')
+                                    else:
+                                        gate_output1 = module_names[i] + '#' + args[-1][
+                                                                               args[-1].find('(') + 1: args[-1].find(
+                                                                                   ')')].strip()
+                                        temp_inputs = [module_names[i] + '#' + args[0][
+                                                                               args[0].find('(') + 1: args[0].find(
+                                                                                   ')')].strip()]
+                                        all_gates[module_names[i]][gate_output1] = Gate(1, temp_inputs, gate_output1,
+                                                                                        'DFF')
                         # if tag not in all_waittags:
                         #     all_waittags[module_names[i]].append(tag)
                         if flag1:
@@ -753,7 +775,7 @@ for i in range(0, len(module_names)):  #Generate bench files
 
     bench_text = bench_text + '\n'
 
-    gate_names = list(all_gates[module_names[i]].keys())
+    gate_names = [gate for gate in all_gates[module_names[i]].keys() if all_gates[module_names[i]][gate].type=='DFF'] + [gate for gate in all_gates[module_names[i]].keys() if all_gates[module_names[i]][gate].type!='DFF']
     for j in range(0, len(gate_names)):
         if gate_names[j] not in all_inputs[module_names[i]] and gate_names[j] not in all_outputs[module_names[i]]:
             gate_dict[gate_names[j]] = seq_num

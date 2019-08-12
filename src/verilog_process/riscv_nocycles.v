@@ -30,7 +30,7 @@ module vscale_core ( clk, ext_interrupts, imem_haddr, imem_hwrite, imem_hsize,
   output [63:0] htif_pcr_resp_data;
   input clk, imem_hready, dmem_hready, htif_reset, htif_id, htif_pcr_req_valid,
          htif_pcr_req_rw, htif_pcr_resp_ready, htif_ipi_req_ready,
-         htif_ipi_resp_valid, htif_ipi_resp_data;
+         htif_ipi_resp_valid, htif_ipi_resp_data, pipeline_csr_system_wen, pipeline_csr_N2405, pipeline_csr_N2407;
   output imem_hwrite, imem_hmastlock, dmem_hwrite, dmem_hmastlock,
          htif_pcr_req_ready, htif_pcr_resp_valid, htif_ipi_req_valid,
          htif_ipi_req_data, htif_ipi_resp_ready, htif_debug_stats_pcr;
@@ -4812,12 +4812,8 @@ module vscale_core ( clk, ext_interrupts, imem_haddr, imem_hwrite, imem_hsize,
   INV_X4 vscale_core_DW01_add_10_U567 ( .A(vscale_core_DW01_add_10n120), .ZN(vscale_core_DW01_add_10n122) );
   INV_X4 vscale_core_DW01_add_10_U568 ( .A(vscale_core_DW01_add_10n119), .ZN(vscale_core_DW01_add_10n121) );
 ;
-  OR2_X1 pipeline_csr_C4919 ( .A1(n7168), .A2(n7179), .ZN(
-        pipeline_csr_system_wen) );
-  AND2_X1 pipeline_csr_C4923 ( .A1(n7090), .A2(pipeline_csr_N79), .ZN(
-        pipeline_csr_N2405) );
-  AND2_X1 pipeline_csr_C4925 ( .A1(n7090), .A2(n6370), .ZN(pipeline_csr_N2407)
-         );
+
+
   DFF_X1 pipeline_md_b_reg_5_ ( .D(n5775), .CK(clk), .Q(pipeline_md_b[5]), 
         .QN(n6919) );
   DFF_X1 pipeline_md_b_reg_4_ ( .D(n5776), .CK(clk), .Q(pipeline_md_b[4]), 
